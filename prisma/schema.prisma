@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  role         String    @default("owner")
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model AdminUser {
+  id                    String   @id @default(cuid())
+  username              String   @unique
+  email                 String
+  passwordHash          String
+  recoveryEmail         String
+  backupRecoveryEmail   String?
+  whatsappNumber        String
+  sessionTimeoutMinutes Int      @default(480)
+  failedAttempts        Int      @default(0)
+  lockedUntil           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  resetTokens           PasswordResetToken[]
+  sessions              AdminSession[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model AdminLoginHistory {
+  id        String   @id @default(cuid())
+  username  String
+  success   Boolean
+  ip        String
+  userAgent String
+  createdAt DateTime @default(now())
+
+  @@index([username])
+  @@index([createdAt])
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  userAgent String
+  ip        String
+  revoked   Boolean   @default(false)
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String
+  sortOrder   Int       @default(0)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String   @default("")
+  enabled         Boolean  @default(true)
+  categoryId      String
+  category        Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sortOrder       Int      @default(0)
+  featuredImageId String?
+  prices          Price[]
+  media           Media[]
+  orders          Order[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Price {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  duration  String
+  bdt       Int
+  usd       String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model Media {
+  id        String   @id @default(cuid())
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  url       String
+  name      String
+  type      String
+  size      Int
+  isFeatured Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Order {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  whatsapp  String?
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName String
+  duration  String
+  bdt       Int
+  usd       String
+  message   String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Inquiry {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+  quote     String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FAQ {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteContent {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
