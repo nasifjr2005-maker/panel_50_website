@@ -54,6 +54,15 @@ export function AdminDashboard() {
   }
 
   useEffect(() => {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const hasFreshLogin = window.sessionStorage.getItem("panel50_admin_fresh_login") === "1";
+    if (navigation?.type === "reload" || !hasFreshLogin) {
+      window.sessionStorage.removeItem("panel50_admin_fresh_login");
+      navigator.sendBeacon?.("/api/admin/logout", new Blob([], { type: "application/json" }));
+      window.location.replace("/admin/login");
+      return;
+    }
+
     window.sessionStorage.removeItem("panel50_admin_fresh_login");
     const timer = window.setTimeout(() => {
       void load();
