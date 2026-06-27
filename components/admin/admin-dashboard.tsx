@@ -116,6 +116,7 @@ export function AdminDashboard() {
           </div>
 
           <StorageWarning storage={store.storage} />
+          <BackupStatus backup={store.backup} />
 
           {active === "dashboard" ? <DashboardOverview store={store} products={products} /> : null}
           {active === "products" ? <ProductsPanel store={store} reload={load} /> : null}
@@ -157,6 +158,28 @@ function StorageWarning({ storage }: { storage?: AdminStore["storage"] }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BackupStatus({ backup }: { backup?: AdminStore["backup"] }) {
+  if (!backup) {
+    return null;
+  }
+
+  const items = [
+    ["Cloudinary media", backup.cloudinary.enabled, backup.cloudinary.message],
+    ["GitHub backup", backup.github.enabled, backup.github.message]
+  ] as const;
+
+  return (
+    <div className="mb-6 grid gap-3 md:grid-cols-2">
+      {items.map(([label, enabled, message]) => (
+        <div key={label} className={`rounded-lg border p-4 ${enabled ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-50" : "border-amber-300/35 bg-amber-300/10 text-amber-50"}`}>
+          <p className="text-sm font-bold uppercase tracking-[0.14em]">{label}: {enabled ? "On" : "Off"}</p>
+          <p className="mt-1 text-sm leading-6">{message}</p>
+        </div>
+      ))}
     </div>
   );
 }

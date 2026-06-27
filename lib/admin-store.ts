@@ -3,6 +3,7 @@ import path from "path";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { faqs, panelCategories, panelPricing, stats, supportEmail, supportWhatsapp, communityLinks } from "@/lib/data";
+import { backupAdminStoreToGitHub, getGitHubBackupStatus } from "@/lib/github-backup";
 import { prisma } from "@/lib/prisma";
 import type {
   AdminCategory,
@@ -48,6 +49,18 @@ export function getStorePersistenceStatus() {
     warning: databaseUnavailable
       ? "Database storage is unavailable. Admin uploads and edits are using temporary fallback storage and can disappear after a redeploy or server restart."
       : "DATABASE_URL is not configured. Admin uploads and edits are not safely persistent on production/serverless hosting and can disappear after a redeploy or server restart."
+  };
+}
+
+export function getAdminBackupStatus() {
+  return {
+    github: getGitHubBackupStatus(),
+    cloudinary: {
+      enabled: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
+      message: process.env.CLOUDINARY_CLOUD_NAME
+        ? "Cloudinary media uploads are configured."
+        : "Cloudinary is not configured. Uploaded media will fall back to temporary data URLs."
+    }
   };
 }
 
@@ -373,6 +386,7 @@ export async function updateAdminStore(mutator: (store: AdminStore) => void | Pr
   const store = await ensureStore();
   await mutator(store);
   await writeStore(store);
+  await backupAdminStoreToGitHub(store);
   return store;
 }
 

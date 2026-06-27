@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { deleteMedia, featureProductMedia, saveMedia } from "@/lib/admin-store";
+import { uploadMediaToCloudinary } from "@/lib/cloudinary-media";
 import type { AdminMedia } from "@/lib/admin-types";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]);
@@ -50,16 +51,19 @@ export async function POST(request: Request) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const url = `data:${file.type};base64,${bytes.toString("base64")}`;
-    const previewUrl = imageTypes.has(file.type) ? await createImagePreview(bytes) : undefined;
+    const cloudinaryUpload = await uploadMediaToCloudinary(bytes, file.type, file.name);
+    const url = cloudinaryUpload?.url ?? `data:${file.type};base64,${bytes.toString("base64")}`;
+    const previewUrl = cloudinaryUpload?.previewUrl ?? (imageTypes.has(file.type) ? await createImagePreview(bytes) : undefined);
     media.push({
       id: randomUUID(),
       productId,
       url,
       previewUrl,
+      provider: cloudinaryUpload ? "cloudinary" : "data-url",
+      providerId: cloudinaryUpload?.providerId,
       name: file.name,
       type: file.type.startsWith("video/") ? "video" : "image",
-      size: file.size,
+      size: cloudinaryUpload?.size ?? file.size,
       isFeatured,
       createdAt: new Date().toISOString()
     });

@@ -11,6 +11,8 @@ export type AdminMedia = {
   productId?: string | null;
   url: string;
   previewUrl?: string;
+  provider?: "cloudinary" | "data-url";
+  providerId?: string;
   name: string;
   type: string;
   size: number;
@@ -217,5 +219,16 @@ export type AdminStore = {
     mode: "database" | "local" | "fallback";
     persistent: boolean;
     warning: string;
+  };
+  backup?: {
+    github: {
+      enabled: boolean;
+      message: string;
+      path: string;
+    };
+    cloudinary: {
+      enabled: boolean;
+      message: string;
+    };
   };
 };
