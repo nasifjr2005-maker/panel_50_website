@@ -59,7 +59,7 @@ export function getAdminBackupStatus() {
       enabled: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
       message: process.env.CLOUDINARY_CLOUD_NAME
         ? "Cloudinary media uploads are configured."
-        : "Cloudinary is not configured. Uploaded media will fall back to temporary data URLs."
+        : "Cloudinary is not configured. Admin media uploads are disabled until CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are set."
     }
   };
 }
@@ -700,7 +700,9 @@ export async function featureProductMedia(productId: string, mediaId: string) {
 }
 
 export async function deleteMedia(mediaId: string) {
+  let deletedMedia: AdminMedia | undefined;
   return updateAdminStore((store) => {
+    deletedMedia = store.media.find((item) => item.id === mediaId);
     store.media = store.media.filter((item) => item.id !== mediaId);
     for (const product of store.categories.flatMap((category) => category.products)) {
       product.media = product.media.filter((item) => item.id !== mediaId);
@@ -715,7 +717,33 @@ export async function deleteMedia(mediaId: string) {
       product.updatedAt = now();
     }
     addUpdate(store, "Deleted media");
-  });
+  }).then(() => deletedMedia);
+}
+
+export async function replaceMedia(mediaId: string, replacement: AdminMedia) {
+  let replacedMedia: AdminMedia | undefined;
+  return updateAdminStore((store) => {
+    replacedMedia = store.media.find((item) => item.id === mediaId);
+    if (!replacedMedia) {
+      throw new Error("Media not found");
+    }
+
+    const nextMedia = {
+      ...replacement,
+      id: mediaId,
+      productId: replacedMedia.productId,
+      isFeatured: replacedMedia.isFeatured,
+      createdAt: replacedMedia.createdAt
+    };
+
+    store.media = store.media.map((item) => item.id === mediaId ? nextMedia : item);
+    for (const product of store.categories.flatMap((category) => category.products)) {
+      product.media = product.media.map((item) => item.id === mediaId ? nextMedia : item);
+      product.updatedAt = now();
+    }
+
+    addUpdate(store, `Replaced media ${replacedMedia.name}`);
+  }).then(() => replacedMedia);
 }
 
 export async function updateContent(content: AdminContent) {

@@ -17,9 +17,15 @@ function publicMedia(item: AdminMedia, featuredImageId?: string | null) {
   };
 }
 
-function productLogo(product: AdminProduct) {
-  const logo = product.media.find((item) => item.type === "image" && (item.isFeatured || item.id === product.featuredImageId)) ??
-    product.media.find((item) => item.type === "image");
+function productMedia(product: AdminProduct, media: AdminMedia[]) {
+  const items = [...product.media, ...media.filter((item) => item.productId === product.id)];
+  return items.filter((item, index, list) => list.findIndex((candidate) => candidate.id === item.id) === index);
+}
+
+function productLogo(product: AdminProduct, media: AdminMedia[]) {
+  const items = productMedia(product, media);
+  const logo = items.find((item) => item.type === "image" && (item.isFeatured || item.id === product.featuredImageId)) ??
+    items.find((item) => item.type === "image");
 
   return logo ? publicMedia(logo, product.featuredImageId) : null;
 }
@@ -66,7 +72,7 @@ export async function GET() {
         .filter((product) => product.enabled)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((product) => {
-          const logo = productLogo(product);
+          const logo = productLogo(product, store.media);
           return {
             id: product.id,
             name: product.name,
@@ -107,7 +113,7 @@ export async function GET() {
   const logos = Object.fromEntries(
     store.categories.flatMap((category) =>
       category.products.flatMap((product) => {
-        const logo = productLogo(product);
+        const logo = productLogo(product, store.media);
         return [
           [product.id, logo],
           [product.name, logo]

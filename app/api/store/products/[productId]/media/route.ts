@@ -28,8 +28,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
     });
   }
 
+  const productMedia = [...product.media, ...store.media.filter((item) => item.productId === product.id)]
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.id === item.id) === index);
+
   return NextResponse.json({
-    media: product.media.map((item) => publicMedia(item, product.featuredImageId))
+    media: productMedia.map((item) => publicMedia(item, product.featuredImageId))
   }, {
     headers: {
       "Cache-Control": "no-store, max-age=0"

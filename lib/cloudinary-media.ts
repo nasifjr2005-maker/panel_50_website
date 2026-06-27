@@ -33,9 +33,37 @@ function dataUrlFromBuffer(bytes: Buffer, mimeType: string) {
   return `data:${mimeType};base64,${bytes.toString("base64")}`;
 }
 
+export function isCloudinaryConfigured() {
+  return hasCloudinaryConfig();
+}
+
+export function optimizedCloudinaryUrl(publicId: string, type: "image" | "video") {
+  if (!configureCloudinary()) {
+    return "";
+  }
+
+  if (type === "video") {
+    return cloudinary.url(publicId, {
+      secure: true,
+      resource_type: "video",
+      transformation: [
+        { quality: "auto", fetch_format: "auto" }
+      ]
+    });
+  }
+
+  return cloudinary.url(publicId, {
+    secure: true,
+    transformation: [
+      { width: 720, crop: "limit" },
+      { fetch_format: "auto", quality: "auto" }
+    ]
+  });
+}
+
 export async function uploadMediaToCloudinary(bytes: Buffer, mimeType: string, fileName: string) {
   if (!configureCloudinary()) {
-    return null;
+    throw new Error("Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.");
   }
 
   const resourceType = mimeType.startsWith("video/") ? "video" : "image";
@@ -48,7 +76,7 @@ export async function uploadMediaToCloudinary(bytes: Buffer, mimeType: string, f
   }) as CloudinaryUploadResult;
 
   return {
-    url: result.secure_url,
+    url: optimizedCloudinaryUrl(result.public_id, resourceType),
     previewUrl: resourceType === "image"
       ? cloudinary.url(result.public_id, {
         secure: true,
@@ -57,11 +85,21 @@ export async function uploadMediaToCloudinary(bytes: Buffer, mimeType: string, f
           { fetch_format: "auto", quality: "auto" }
         ]
       })
-      : result.secure_url,
+      : optimizedCloudinaryUrl(result.public_id, resourceType),
     providerId: result.public_id,
     size: result.bytes,
     format: result.format,
     width: result.width,
     height: result.height
   };
+}
+
+export async function deleteMediaFromCloudinary(publicId: string, type: "image" | "video") {
+  if (!publicId || !configureCloudinary()) {
+    return;
+  }
+
+  await cloudinary.uploader.destroy(publicId, {
+    resource_type: type
+  });
 }

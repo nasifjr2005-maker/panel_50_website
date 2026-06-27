@@ -395,6 +395,7 @@ function MediaPanel({ store, products, reload }: { store: AdminStore; products: 
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedLogoProductId, setSelectedLogoProductId] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [replacingId, setReplacingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const logoProductId = selectedLogoProductId || products[0]?.id || "";
@@ -424,10 +425,35 @@ function MediaPanel({ store, products, reload }: { store: AdminStore; products: 
         return;
       }
       formRef.current?.reset();
-      setMessage("Upload saved. Logo changes are live on the main page.");
+      setMessage("Cloudinary upload saved. Changes are live on the main page.");
       await reload();
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function replaceUpload(mediaId: string, file: File | undefined) {
+    if (!file || file.size === 0) {
+      return;
+    }
+
+    const form = new FormData();
+    form.append("mediaId", mediaId);
+    form.append("file", file);
+    setReplacingId(mediaId);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch("/api/admin/media", { method: "PUT", body: form });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        setError(result.error || "Could not replace media.");
+        return;
+      }
+      setMessage("Media replaced in Cloudinary and updated on the live website.");
+      await reload();
+    } finally {
+      setReplacingId("");
     }
   }
 
@@ -485,6 +511,10 @@ function MediaPanel({ store, products, reload }: { store: AdminStore; products: 
               {item.type === "image" ? (
                 <button type="button" onClick={() => setAsLogo(item.id)} className="rounded-md border border-white/15 px-3 py-2 text-sm font-bold uppercase transition hover:border-[#7cb0ff] hover:bg-[#4382DF]/15">Set As Logo</button>
               ) : null}
+              <label className="cursor-pointer rounded-md border border-white/15 px-3 py-2 text-sm font-bold uppercase transition hover:border-[#7cb0ff] hover:bg-[#4382DF]/15">
+                {replacingId === item.id ? "Replacing" : "Replace"}
+                <input type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.webm" className="sr-only" disabled={Boolean(replacingId)} onChange={(event) => void replaceUpload(item.id, event.target.files?.[0])} />
+              </label>
               <DeleteButton url={`/api/admin/media?id=${item.id}`} reload={reload} />
             </div>
           </AdminCard>
