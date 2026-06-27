@@ -33,6 +33,24 @@ function hasDatabaseUrl() {
   return Boolean(process.env.DATABASE_URL) && !databaseUnavailable;
 }
 
+export function getStorePersistenceStatus() {
+  if (hasDatabaseUrl()) {
+    return {
+      mode: "database" as const,
+      persistent: true,
+      warning: ""
+    };
+  }
+
+  return {
+    mode: databaseUnavailable ? "fallback" as const : "local" as const,
+    persistent: false,
+    warning: databaseUnavailable
+      ? "Database storage is unavailable. Admin uploads and edits are using temporary fallback storage and can disappear after a redeploy or server restart."
+      : "DATABASE_URL is not configured. Admin uploads and edits are not safely persistent on production/serverless hosting and can disappear after a redeploy or server restart."
+  };
+}
+
 function id() {
   return randomUUID();
 }

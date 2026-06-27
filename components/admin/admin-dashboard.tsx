@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Boxes, FileQuestion, Globe2, ImageIcon, KeyRound, LayoutDashboard, LogOut, MessageSquare, Save, Search, Settings, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, BarChart3, Boxes, FileQuestion, Globe2, ImageIcon, KeyRound, LayoutDashboard, LogOut, MessageSquare, Save, Search, Settings, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
 import type { AdminCommunityLink, AdminContent, AdminFAQ, AdminOrder, AdminPrice, AdminProduct, AdminStore, AdminTestimonial } from "@/lib/admin-types";
 
 const menu = [
@@ -115,6 +115,8 @@ export function AdminDashboard() {
             </div>
           </div>
 
+          <StorageWarning storage={store.storage} />
+
           {active === "dashboard" ? <DashboardOverview store={store} products={products} /> : null}
           {active === "products" ? <ProductsPanel store={store} reload={load} /> : null}
           {active === "pricing" ? <PricingPanel products={products} reload={load} /> : null}
@@ -134,6 +136,29 @@ export function AdminDashboard() {
 
 function AdminCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`glass rounded-lg p-5 ${className}`}>{children}</div>;
+}
+
+function StorageWarning({ storage }: { storage?: AdminStore["storage"] }) {
+  if (!storage || storage.persistent) {
+    return null;
+  }
+
+  return (
+    <div className="mb-6 rounded-lg border border-amber-300/40 bg-amber-300/12 p-4 text-amber-50 shadow-[0_18px_50px_rgba(251,191,36,0.12)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-amber-200/40 bg-amber-300/18 text-amber-100">
+          <AlertTriangle size={22} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.14em] text-amber-100">Storage warning</p>
+          <p className="mt-1 text-base leading-7">{storage.warning}</p>
+          <p className="mt-2 text-sm font-semibold uppercase tracking-[0.12em] text-amber-100/85">
+            Current mode: {storage.mode}. Add a production DATABASE_URL before relying on logo, product, category, or media uploads.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DashboardOverview({ store, products }: { store: AdminStore; products: AdminProduct[] }) {

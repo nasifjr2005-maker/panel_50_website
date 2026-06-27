@@ -213,4 +213,9 @@ export type AdminStore = {
   settings: AdminSettings;
   lastLogin?: string;
   recentUpdates: string[];
+  storage?: {
+    mode: "database" | "local" | "fallback";
+    persistent: boolean;
+    warning: string;
+  };
 };
