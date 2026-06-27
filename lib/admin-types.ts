@@ -10,6 +10,7 @@ export type AdminMedia = {
   id: string;
   productId?: string | null;
   url: string;
+  previewUrl?: string;
   name: string;
   type: string;
   size: number;

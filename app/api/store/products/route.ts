@@ -1,9 +1,27 @@
 import { NextResponse } from "next/server";
 import { getAdminStore } from "@/lib/admin-store";
+import type { AdminMedia, AdminProduct } from "@/lib/admin-types";
 
 function gmailUrl(email: string) {
   const params = new URLSearchParams({ view: "cm", fs: "1", to: email });
   return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+function publicMedia(item: AdminMedia, featuredImageId?: string | null) {
+  return {
+    id: item.id,
+    url: item.previewUrl || item.url,
+    type: item.type,
+    name: item.name,
+    isFeatured: item.type === "image" && (item.isFeatured || item.id === featuredImageId)
+  };
+}
+
+function productLogo(product: AdminProduct) {
+  const logo = product.media.find((item) => item.type === "image" && (item.isFeatured || item.id === product.featuredImageId)) ??
+    product.media.find((item) => item.type === "image");
+
+  return logo ? publicMedia(logo, product.featuredImageId) : null;
 }
 
 export async function GET() {
@@ -47,14 +65,18 @@ export async function GET() {
       products: category.products
         .filter((product) => product.enabled)
         .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((product) => ({
-          id: product.id,
-          name: product.name,
-          description: product.description,
-          categoryId: product.categoryId,
-          categoryName: category.name,
-          featuredImageId: product.featuredImageId ?? null
-        }))
+        .map((product) => {
+          const logo = productLogo(product);
+          return {
+            id: product.id,
+            name: product.name,
+            description: product.description,
+            categoryId: product.categoryId,
+            categoryName: category.name,
+            featuredImageId: product.featuredImageId ?? null,
+            logo
+          };
+        })
     }));
 
   const categories = sortedCategories.map((category) => ({
@@ -82,19 +104,13 @@ export async function GET() {
     )
   );
 
-  const media = Object.fromEntries(
+  const logos = Object.fromEntries(
     store.categories.flatMap((category) =>
       category.products.flatMap((product) => {
-        const productMedia = product.media.map((item) => ({
-          id: item.id,
-          url: item.url,
-          type: item.type,
-          name: item.name,
-          isFeatured: item.isFeatured || item.id === product.featuredImageId
-        }));
+        const logo = productLogo(product);
         return [
-          [product.id, productMedia],
-          [product.name, productMedia]
+          [product.id, logo],
+          [product.name, logo]
         ];
       })
     )
@@ -103,7 +119,8 @@ export async function GET() {
   return NextResponse.json({
     categories,
     pricing,
-    media,
+    logos,
+    media: {},
     content: store.content,
     settings: store.settings,
     faqs: store.faqs.filter((faq) => faq.enabled).sort((a, b) => a.sortOrder - b.sortOrder),
@@ -118,6 +135,10 @@ export async function GET() {
         whatsappUrl,
         formsubmitEndpoint: `https://formsubmit.co/ajax/${store.settings.formSubmitEmail || supportEmail}`
       }
+    }
+  }, {
+    headers: {
+      "Cache-Control": "no-store, max-age=0"
     }
   });
 }

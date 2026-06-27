@@ -1,28 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Gamepad2, X } from "lucide-react";
 import { Reveal } from "@/components/reveal";
 import { Container, SectionHeader } from "@/components/ui";
 import { panelCategories, panelPricing } from "@/lib/data";
+import type { StoreCatalog, StoreCategory, StoreProduct } from "@/lib/storefront-types";
 import type { PanelPrice, SelectedPanelOrder } from "@/lib/data";
-
-type StoreProduct = {
-  id: string;
-  name: string;
-  description?: string;
-  categoryId?: string;
-  categoryName?: string;
-  featuredImageId?: string | null;
-};
-
-type StoreCategory = {
-  id?: string;
-  category: string;
-  name?: string;
-  description: string;
-  panels?: string[];
-  products?: StoreProduct[];
-};
 
 type StoreMedia = {
   id?: string;
@@ -61,23 +44,34 @@ function findFeaturedImage(items: StoreMedia[]) {
   return items.find((item) => item.type === "image" && item.isFeatured) ?? items.find((item) => item.type === "image");
 }
 
+function getProductLogo(product: StoreProduct, logos: StoreCatalog["logos"]) {
+  return product.logo ?? logos[product.id] ?? logos[product.name] ?? null;
+}
+
 export function Features({
   selectedOrder,
   onOrderSelect,
-  content = {}
+  content = {},
+  catalog
 }: {
   selectedOrder: SelectedPanelOrder | null;
   onOrderSelect: (order: SelectedPanelOrder) => void;
   content?: Record<string, string>;
+  catalog?: StoreCatalog;
 }) {
   const [activeProduct, setActiveProduct] = useState<StoreProduct | null>(null);
   const [selectedPrice, setSelectedPrice] = useState<PanelPrice | null>(null);
-  const [managedCategories, setManagedCategories] = useState<StoreCategory[]>(fallbackCategories);
-  const [managedPricing, setManagedPricing] = useState<Record<string, PanelPrice[]>>(panelPricing);
   const [managedMedia, setManagedMedia] = useState<Record<string, StoreMedia[]>>({});
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const managedCategories = catalog?.categories?.length ? catalog.categories : fallbackCategories;
+  const managedPricing = useMemo(
+    () => Object.keys(catalog?.pricing ?? {}).length ? catalog?.pricing ?? panelPricing : panelPricing,
+    [catalog?.pricing]
+  );
+  const managedLogos = useMemo(() => catalog?.logos ?? {}, [catalog?.logos]);
   const activePrices = activeProduct ? managedPricing[activeProduct.id] ?? managedPricing[activeProduct.name] ?? [] : [];
   const activeMedia = activeProduct ? managedMedia[activeProduct.id] ?? managedMedia[activeProduct.name] ?? [] : [];
-  const activeLogo = findFeaturedImage(activeMedia);
+  const activeLogo = activeProduct ? getProductLogo(activeProduct, managedLogos) ?? findFeaturedImage(activeMedia) : null;
   const highestPrice = activePrices.reduce((max, price) => Math.max(max, price.bdt), 0);
 
   function openPricing(product: StoreProduct) {
@@ -131,24 +125,37 @@ export function Features({
   }, [activeProduct]);
 
   useEffect(() => {
-    async function loadManagedProducts() {
+    if (!activeProduct || activeMedia.length) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadProductMedia(product: StoreProduct) {
+      setMediaLoading(true);
       try {
-        const response = await fetch("/api/store/products", { cache: "no-store" });
+        const response = await fetch(`/api/store/products/${encodeURIComponent(product.id)}/media`, { cache: "no-store" });
         if (!response.ok) {
           return;
         }
         const data = await response.json();
-        setManagedCategories(data.categories?.length ? data.categories : fallbackCategories);
-        setManagedPricing(data.pricing ?? panelPricing);
-        setManagedMedia(data.media ?? {});
+        if (!cancelled) {
+          const media = data.media ?? [];
+          setManagedMedia((current) => ({ ...current, [product.id]: media, [product.name]: media }));
+        }
       } catch {
-        setManagedCategories(fallbackCategories);
-        setManagedPricing(panelPricing);
+        // The logo and pricing stay usable if the optional gallery fails.
+      } finally {
+        if (!cancelled) {
+          setMediaLoading(false);
+        }
       }
     }
 
-    void loadManagedProducts();
-  }, []);
+    void loadProductMedia(activeProduct);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMedia.length, activeProduct]);
 
   return (
     <section id="features" className="py-20">
@@ -181,8 +188,7 @@ export function Features({
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {getCategoryProducts(category).map((product) => {
                     const isSelected = selectedOrder?.productId === product.id || selectedOrder?.panel === product.name;
-                    const panelMedia = managedMedia[product.id] ?? managedMedia[product.name] ?? [];
-                    const panelLogo = findFeaturedImage(panelMedia);
+                    const panelLogo = getProductLogo(product, managedLogos);
 
                     return (
                       <button
@@ -276,6 +282,11 @@ export function Features({
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
             {activePrices.length > 0 ? (
               <>
+                {mediaLoading && !activeMedia.length ? (
+                  <div className="mt-5 rounded-lg border border-white/12 bg-white/7 p-4 text-sm font-semibold uppercase tracking-[0.12em] text-[#aeb8df]">
+                    Loading media...
+                  </div>
+                ) : null}
                 {activeMedia.length ? (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     {activeMedia.slice(0, 4).map((item) => (

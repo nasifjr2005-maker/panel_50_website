@@ -346,14 +346,41 @@ function PricingPanel({ products, reload }: { products: AdminProduct[]; reload: 
 function MediaPanel({ store, products, reload }: { store: AdminStore; products: AdminProduct[]; reload: () => Promise<void> }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedLogoProductId, setSelectedLogoProductId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const logoProductId = selectedLogoProductId || products[0]?.id || "";
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploading) {
+      return;
+    }
+
     const form = new FormData(event.currentTarget);
-    await fetch("/api/admin/media", { method: "POST", body: form });
-    formRef.current?.reset();
-    await reload();
+    const files = form.getAll("files").filter((item): item is File => item instanceof File && item.size > 0);
+    if (!files.length) {
+      setError("Choose an image or video before uploading.");
+      setMessage("");
+      return;
+    }
+
+    setUploading(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch("/api/admin/media", { method: "POST", body: form });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        setError(result.error || "Upload failed. Please try again.");
+        return;
+      }
+      formRef.current?.reset();
+      setMessage("Upload saved. Logo changes are live on the main page.");
+      await reload();
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function setAsLogo(mediaId: string) {
@@ -375,12 +402,14 @@ function MediaPanel({ store, products, reload }: { store: AdminStore; products: 
         <form ref={formRef} onSubmit={upload} className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <select name="productId" className="admin-input"><option value="">General media</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
           <input name="files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.mp4,.webm" className="admin-input" />
-          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4382DF] px-5 py-3 font-bold uppercase"><Upload size={18} /> Upload</button>
+          <button disabled={uploading} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4382DF] px-5 py-3 font-bold uppercase transition hover:bg-[#5a95f0] disabled:cursor-not-allowed disabled:bg-white/8 disabled:text-[#7f89b4]"><Upload size={18} /> {uploading ? "Uploading" : "Upload"}</button>
           <label className="flex items-center gap-2 text-sm font-bold uppercase text-[#c8d1f3] md:col-span-3">
             <input name="isFeatured" type="checkbox" />
             Use uploaded image as product logo / featured image
           </label>
         </form>
+        {message ? <p className="mt-4 rounded-md border border-emerald-300/30 bg-emerald-400/12 p-3 text-emerald-100">{message}</p> : null}
+        {error ? <p className="mt-4 rounded-md border border-red-300/30 bg-red-500/12 p-3 text-red-100">{error}</p> : null}
       </AdminCard>
       <AdminCard>
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">

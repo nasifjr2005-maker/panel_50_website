@@ -14,6 +14,7 @@ import { HowItWorks } from "@/components/sections/how-it-works";
 import { Navbar } from "@/components/sections/navbar";
 import { Newsletter } from "@/components/sections/newsletter";
 import { faqs as defaultFaqs } from "@/lib/data";
+import type { StoreCatalog } from "@/lib/storefront-types";
 import type { SelectedPanelOrder } from "@/lib/data";
 
 export type StorefrontConfig = {
@@ -44,9 +45,16 @@ const defaultStorefront: StorefrontConfig = {
   faqs: defaultFaqs
 };
 
+const defaultCatalog: StoreCatalog = {
+  categories: [],
+  pricing: {},
+  logos: {}
+};
+
 export function HomePage() {
   const [selectedOrder, setSelectedOrder] = useState<SelectedPanelOrder | null>(null);
   const [storefront, setStorefront] = useState<StorefrontConfig>(defaultStorefront);
+  const [catalog, setCatalog] = useState<StoreCatalog>(defaultCatalog);
 
   useEffect(() => {
     async function loadStorefront() {
@@ -56,12 +64,18 @@ export function HomePage() {
           return;
         }
         const data = await response.json();
+        setCatalog({
+          categories: data.categories ?? [],
+          pricing: data.pricing ?? {},
+          logos: data.logos ?? {}
+        });
         setStorefront({
           ...defaultStorefront,
           ...(data.storefront ?? {}),
           faqs: data.faqs?.length ? data.faqs : defaultStorefront.faqs
         });
       } catch {
+        setCatalog(defaultCatalog);
         setStorefront(defaultStorefront);
       }
     }
@@ -80,7 +94,7 @@ export function HomePage() {
       <Navbar settings={storefront.settings} />
       <main>
         <Hero content={storefront.content} settings={storefront.settings} />
-        <Features selectedOrder={selectedOrder} onOrderSelect={handleOrderSelect} content={storefront.content} />
+        <Features selectedOrder={selectedOrder} onOrderSelect={handleOrderSelect} content={storefront.content} catalog={catalog} />
         <HowItWorks content={storefront.content} />
         <Benefits content={storefront.content} />
         <Faq content={storefront.content} faqs={storefront.faqs} />

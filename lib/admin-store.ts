@@ -612,11 +612,19 @@ export async function saveMedia(media: AdminMedia[]) {
         continue;
       }
       const product = store.categories.flatMap((category) => category.products).find((candidate) => candidate.id === item.productId);
-      product?.media.unshift(item);
+      if (!product) {
+        continue;
+      }
+
+      product.media = [item, ...product.media.filter((mediaItem) => mediaItem.id !== item.id)];
       if (product && item.type === "image" && (item.isFeatured || !product.featuredImageId)) {
         product.featuredImageId = item.id;
         product.media = product.media.map((mediaItem) => ({ ...mediaItem, isFeatured: mediaItem.id === item.id }));
+        store.media = store.media.map((mediaItem) => mediaItem.productId === product.id && mediaItem.type === "image"
+          ? { ...mediaItem, isFeatured: mediaItem.id === item.id }
+          : mediaItem);
       }
+      product.updatedAt = now();
     }
     addUpdate(store, `Uploaded ${media.length} media file${media.length === 1 ? "" : "s"}`);
   });
@@ -645,7 +653,15 @@ export async function featureProductMedia(productId: string, mediaId: string) {
     }
     product.featuredImageId = mediaItem.id;
     product.media = product.media.map((item) => ({ ...item, productId: product.id, isFeatured: item.id === mediaItem.id }));
-    store.media = store.media.map((item) => item.id === mediaItem.id ? { ...item, productId: product.id, isFeatured: true } : item);
+    store.media = store.media.map((item) => {
+      if (item.id === mediaItem.id) {
+        return { ...item, productId: product.id, isFeatured: true };
+      }
+      if (item.productId === product.id && item.type === "image") {
+        return { ...item, isFeatured: false };
+      }
+      return item;
+    });
     product.updatedAt = now();
     addUpdate(store, `Updated logo for ${product.name}`);
   });
@@ -657,8 +673,14 @@ export async function deleteMedia(mediaId: string) {
     for (const product of store.categories.flatMap((category) => category.products)) {
       product.media = product.media.filter((item) => item.id !== mediaId);
       if (product.featuredImageId === mediaId) {
-        product.featuredImageId = null;
+        const nextFeatured = product.media.find((item) => item.type === "image") ?? null;
+        product.featuredImageId = nextFeatured?.id ?? null;
+        product.media = product.media.map((item) => ({ ...item, isFeatured: item.id === nextFeatured?.id }));
+        store.media = store.media.map((item) => item.productId === product.id && item.type === "image"
+          ? { ...item, isFeatured: item.id === nextFeatured?.id }
+          : item);
       }
+      product.updatedAt = now();
     }
     addUpdate(store, "Deleted media");
   });
