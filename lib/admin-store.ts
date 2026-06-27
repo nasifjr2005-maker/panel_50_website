@@ -3,6 +3,7 @@ import path from "path";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { faqs, panelCategories, panelPricing, stats, supportEmail, supportWhatsapp, communityLinks } from "@/lib/data";
+import { prisma } from "@/lib/prisma";
 import type {
   AdminCategory,
   AdminCommunityLink,
@@ -20,11 +21,17 @@ import type {
 
 const dataDir = path.join(process.cwd(), "data");
 const dataFile = path.join(dataDir, "admin-store.json");
+const storeSnapshotKey = "admin-store-snapshot";
 const defaultAdminUsername = "nasif07_";
 const defaultAdminPassword = "panel50official@#ff";
 const legacyAdminUsername = "owner";
 const legacyAdminPassword = "panel50admin";
 let memoryStore: AdminStore | null = null;
+let databaseUnavailable = false;
+
+function hasDatabaseUrl() {
+  return Boolean(process.env.DATABASE_URL) && !databaseUnavailable;
+}
 
 function id() {
   return randomUUID();
@@ -257,6 +264,29 @@ async function ensureStore() {
     return memoryStore;
   }
 
+  if (hasDatabaseUrl()) {
+    try {
+      const snapshot = await prisma.siteContent.findUnique({ where: { key: storeSnapshotKey } });
+      if (snapshot?.value) {
+        const parsed = normalizeStore(snapshot.value as Partial<AdminStore>);
+        const changed = repairBundledCredentials(parsed);
+        if (changed) {
+          await writeStore(parsed);
+        }
+        memoryStore = parsed;
+        return parsed;
+      }
+
+      const store = seedStore();
+      await writeStore(store);
+      memoryStore = store;
+      return store;
+    } catch (error) {
+      databaseUnavailable = true;
+      console.error("Admin database store unavailable. Falling back to local JSON store.", error);
+    }
+  }
+
   try {
     const content = await readFile(dataFile, "utf8");
     const raw = JSON.parse(content) as Partial<AdminStore>;
@@ -290,6 +320,20 @@ async function ensureStore() {
 
 async function writeStore(store: AdminStore) {
   memoryStore = store;
+  if (hasDatabaseUrl()) {
+    try {
+      await prisma.siteContent.upsert({
+        where: { key: storeSnapshotKey },
+        create: { key: storeSnapshotKey, value: store as never },
+        update: { value: store as never }
+      });
+      return;
+    } catch (error) {
+      databaseUnavailable = true;
+      console.error("Could not persist admin store to database. Falling back to local JSON store.", error);
+    }
+  }
+
   try {
     await mkdir(dataDir, { recursive: true });
     await writeFile(dataFile, JSON.stringify(store, null, 2), "utf8");
@@ -575,6 +619,35 @@ export async function saveMedia(media: AdminMedia[]) {
       }
     }
     addUpdate(store, `Uploaded ${media.length} media file${media.length === 1 ? "" : "s"}`);
+  });
+}
+
+export async function featureProductMedia(productId: string, mediaId: string) {
+  return updateAdminStore((store) => {
+    const product = store.categories.flatMap((category) => category.products).find((item) => item.id === productId);
+    const mediaItem = store.media.find((item) => item.id === mediaId);
+    if (!product || !mediaItem || mediaItem.type !== "image") {
+      throw new Error("Product image not found");
+    }
+
+    for (const candidate of store.categories.flatMap((category) => category.products)) {
+      if (candidate.id !== product.id) {
+        candidate.media = candidate.media.filter((item) => item.id !== mediaItem.id);
+        if (candidate.featuredImageId === mediaItem.id) {
+          candidate.featuredImageId = null;
+        }
+      }
+    }
+
+    mediaItem.productId = product.id;
+    if (!product.media.some((item) => item.id === mediaItem.id)) {
+      product.media.unshift(mediaItem);
+    }
+    product.featuredImageId = mediaItem.id;
+    product.media = product.media.map((item) => ({ ...item, productId: product.id, isFeatured: item.id === mediaItem.id }));
+    store.media = store.media.map((item) => item.id === mediaItem.id ? { ...item, productId: product.id, isFeatured: true } : item);
+    product.updatedAt = now();
+    addUpdate(store, `Updated logo for ${product.name}`);
   });
 }
 

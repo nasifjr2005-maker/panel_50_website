@@ -52,6 +52,7 @@ export function Contact({
           name,
           contact,
           whatsapp: contact,
+          productId: selectedOrder.productId,
           productName: selectedOrder.panel,
           duration: selectedOrder.duration,
           bdt: selectedOrder.bdt,

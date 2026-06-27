@@ -22,6 +22,27 @@ function emptyPrice(): AdminPrice {
   return { id: crypto.randomUUID(), duration: "", bdt: 0, usd: "$0", sortOrder: 0 };
 }
 
+function getFeaturedMedia(product: AdminProduct) {
+  return product.media.find((item) => item.type === "image" && (item.isFeatured || item.id === product.featuredImageId)) ??
+    product.media.find((item) => item.type === "image");
+}
+
+function setFormValue(form: HTMLFormElement, name: string, value: string | boolean | number) {
+  const field = form.elements.namedItem(name);
+  if (field instanceof HTMLInputElement) {
+    if (field.type === "checkbox") {
+      field.checked = Boolean(value);
+    } else {
+      field.value = String(value);
+    }
+    return;
+  }
+
+  if (field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+    field.value = String(value);
+  }
+}
+
 export function AdminDashboard() {
   const [store, setStore] = useState<AdminStore | null>(null);
   const [active, setActive] = useState("dashboard");
@@ -33,25 +54,12 @@ export function AdminDashboard() {
   }
 
   useEffect(() => {
-    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-    if (navigation?.type === "reload" || window.sessionStorage.getItem("panel50_admin_fresh_login") !== "1") {
-      window.sessionStorage.removeItem("panel50_admin_fresh_login");
-      navigator.sendBeacon?.("/api/admin/logout", new Blob([], { type: "application/json" }));
-      window.location.replace("/admin/login");
-      return;
-    }
-
     window.sessionStorage.removeItem("panel50_admin_fresh_login");
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
-    function logoutOnUnload() {
-      navigator.sendBeacon?.("/api/admin/logout", new Blob([], { type: "application/json" }));
-    }
-    window.addEventListener("pagehide", logoutOnUnload);
     return () => {
       window.clearTimeout(timer);
-      window.removeEventListener("pagehide", logoutOnUnload);
     };
   }, []);
 
@@ -69,30 +77,30 @@ export function AdminDashboard() {
   return (
     <main className="min-h-screen text-white">
       <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
-        <aside className="border-r border-white/10 bg-[#07091f]/88 p-5 backdrop-blur-xl">
+        <aside className="border-b border-white/10 bg-[#07091f]/88 p-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:p-5">
           <h1 className="text-2xl font-bold uppercase">PANEL 50 Admin</h1>
           <p className="mt-1 text-sm uppercase tracking-[0.16em] text-[#7cb0ff]">Owner CMS</p>
-          <nav className="mt-8 grid gap-2">
+          <nav className="mt-6 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:overflow-visible lg:pb-0">
             {menu.map(({ id, label, icon: Icon }) => (
-              <button key={id} type="button" onClick={() => setActive(id)} className={`flex items-center gap-3 rounded-md px-4 py-3 text-left font-bold uppercase transition ${active === id ? "bg-[#4382DF] text-white shadow-[0_0_28px_rgba(67,130,223,0.35)]" : "text-[#c8d1f3] hover:bg-white/8 hover:text-white"}`}>
+              <button key={id} type="button" onClick={() => setActive(id)} className={`flex shrink-0 items-center gap-3 rounded-md px-4 py-3 text-left text-sm font-bold uppercase transition lg:text-base ${active === id ? "bg-[#4382DF] text-white shadow-[0_0_28px_rgba(67,130,223,0.35)]" : "text-[#c8d1f3] hover:bg-white/8 hover:text-white"}`}>
                 <Icon size={18} aria-hidden="true" />
                 {label}
               </button>
             ))}
           </nav>
-          <button onClick={logout} className="mt-8 flex w-full items-center justify-center gap-2 rounded-md border border-white/15 bg-white/8 px-4 py-3 font-bold uppercase transition hover:border-red-200/50 hover:bg-red-500/15">
+          <button onClick={logout} className="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-white/15 bg-white/8 px-4 py-3 font-bold uppercase transition hover:border-red-200/50 hover:bg-red-500/15 lg:mt-8">
             <LogOut size={18} aria-hidden="true" />
             Logout
           </button>
         </aside>
 
-        <section className="p-5 sm:p-8">
+        <section className="min-w-0 p-4 sm:p-6 lg:p-8">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#7cb0ff]">Secure owner dashboard</p>
-              <h2 className="mt-2 text-4xl font-bold uppercase">{menu.find((item) => item.id === active)?.label}</h2>
+              <h2 className="mt-2 break-words text-3xl font-bold uppercase sm:text-4xl">{menu.find((item) => item.id === active)?.label}</h2>
             </div>
-            <div className="relative max-w-sm">
+            <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7cb0ff]" size={18} />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search orders/products..." className="min-h-11 w-full rounded-md border border-white/12 bg-[#090b24] pl-10 pr-4 outline-none transition focus:border-[#4382DF]" />
             </div>
@@ -148,6 +156,29 @@ function DashboardOverview({ store, products }: { store: AdminStore; products: A
 }
 
 function ProductsPanel({ store, reload }: { store: AdminStore; reload: () => Promise<void> }) {
+  const categoryFormRef = useRef<HTMLFormElement>(null);
+  const productFormRef = useRef<HTMLFormElement>(null);
+
+  function editCategory(category: AdminStore["categories"][number]) {
+    const form = categoryFormRef.current;
+    if (!form) return;
+    setFormValue(form, "id", category.id);
+    setFormValue(form, "name", category.name);
+    setFormValue(form, "description", category.description);
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function editProduct(product: AdminProduct) {
+    const form = productFormRef.current;
+    if (!form) return;
+    setFormValue(form, "id", product.id);
+    setFormValue(form, "name", product.name);
+    setFormValue(form, "description", product.description);
+    setFormValue(form, "categoryId", product.categoryId);
+    setFormValue(form, "enabled", product.enabled);
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function submitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -186,7 +217,7 @@ function ProductsPanel({ store, reload }: { store: AdminStore; reload: () => Pro
     <div className="grid gap-5">
       <AdminCard>
         <h3 className="text-2xl font-bold uppercase">Add or Edit Category</h3>
-        <form onSubmit={submitCategory} className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+        <form ref={categoryFormRef} onSubmit={submitCategory} className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <input name="id" placeholder="Existing category ID for edit" className="admin-input" />
           <input name="name" required placeholder="Category name" className="admin-input" />
           <button className="rounded-md bg-[#4382DF] px-5 py-3 font-bold uppercase">Save Category</button>
@@ -195,7 +226,7 @@ function ProductsPanel({ store, reload }: { store: AdminStore; reload: () => Pro
       </AdminCard>
       <AdminCard>
         <h3 className="text-2xl font-bold uppercase">Add or Edit Product</h3>
-        <form onSubmit={submit} className="mt-5 grid gap-4 md:grid-cols-4">
+        <form ref={productFormRef} onSubmit={submit} className="mt-5 grid gap-4 md:grid-cols-4">
           <input name="id" placeholder="Existing ID for edit" className="admin-input" />
           <input name="name" required placeholder="Product name" className="admin-input" />
           <select name="categoryId" required className="admin-input">
@@ -214,21 +245,37 @@ function ProductsPanel({ store, reload }: { store: AdminStore; reload: () => Pro
                 <h4 className="text-xl font-bold uppercase">{category.name}</h4>
                 <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#aeb8df]">ID: {category.id}</p>
               </div>
-              {category.products.length === 0 ? <DeleteButton url={`/api/admin/categories?id=${category.id}`} reload={reload} label="Delete Category" /> : null}
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => editCategory(category)} className="rounded-md border border-white/15 px-3 py-2 text-sm font-bold uppercase transition hover:border-[#7cb0ff] hover:bg-[#4382DF]/15">Edit Category</button>
+                {category.products.length === 0 ? <DeleteButton url={`/api/admin/categories?id=${category.id}`} reload={reload} label="Delete Category" /> : null}
+              </div>
             </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
-                <thead className="text-sm uppercase tracking-[0.12em] text-[#7cb0ff]"><tr><th>Name</th><th>Description</th><th>Status</th><th>ID</th><th /></tr></thead>
+              <table className="w-full min-w-[860px] text-left">
+                <thead className="text-sm uppercase tracking-[0.12em] text-[#7cb0ff]"><tr><th>Logo</th><th>Name</th><th>Description</th><th>Status</th><th>ID</th><th /></tr></thead>
                 <tbody>
-                  {category.products.map((product) => (
-                    <tr key={product.id} className="border-t border-white/10">
-                      <td className="py-3 font-bold">{product.name}</td>
-                      <td className="py-3 text-[#c8d1f3]">{product.description}</td>
-                      <td className="py-3">{product.enabled ? "Enabled" : "Disabled"}</td>
-                      <td className="py-3 text-xs text-[#aeb8df]">{product.id}</td>
-                      <td className="py-3 text-right"><DeleteButton url={`/api/admin/products?id=${product.id}`} reload={reload} /></td>
-                    </tr>
-                  ))}
+                  {category.products.map((product) => {
+                    const featuredMedia = getFeaturedMedia(product);
+                    return (
+                      <tr key={product.id} className="border-t border-white/10">
+                        <td className="py-3">
+                          <span className="flex size-12 items-center justify-center rounded-md border border-white/12 bg-white/8 p-1.5">
+                            {featuredMedia ? <img src={featuredMedia.url} alt="" className="h-full w-full rounded-sm object-contain" /> : <ImageIcon size={20} className="text-[#7cb0ff]" aria-hidden="true" />}
+                          </span>
+                        </td>
+                        <td className="py-3 font-bold">{product.name}</td>
+                        <td className="max-w-md py-3 text-[#c8d1f3]">{product.description}</td>
+                        <td className="py-3">{product.enabled ? "Enabled" : "Disabled"}</td>
+                        <td className="py-3 text-xs text-[#aeb8df]">{product.id}</td>
+                        <td className="py-3">
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => editProduct(product)} className="rounded-md border border-white/15 px-3 py-2 text-sm font-bold uppercase transition hover:border-[#7cb0ff] hover:bg-[#4382DF]/15">Edit</button>
+                            <DeleteButton url={`/api/admin/products?id=${product.id}`} reload={reload} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -260,16 +307,22 @@ function PricingPanel({ products, reload }: { products: AdminProduct[]; reload: 
 
   return (
     <AdminCard>
-      <select value={product.id} onChange={(event) => setSelectedId(event.target.value)} className="admin-input max-w-md">
-        {products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <label className="grid w-full max-w-xl gap-2 text-sm font-bold uppercase tracking-[0.12em] text-[#aeb8df]">
+          Product
+          <select value={product.id} onChange={(event) => setSelectedId(event.target.value)} className="admin-input">
+            {products.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <p className="text-sm uppercase tracking-[0.12em] text-[#7cb0ff]">{prices.length} durations</p>
+      </div>
       <div className="mt-5 grid gap-3">
         {prices.map((price, index) => (
-          <div key={price.id} className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+          <div key={price.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/7 p-3 md:grid-cols-[1fr_1fr_1fr_auto]">
             <input value={price.duration} onChange={(event) => setPrices(prices.map((item, i) => i === index ? { ...item, duration: event.target.value } : item))} className="admin-input" placeholder="Duration" />
             <input value={price.bdt} type="number" onChange={(event) => setPrices(prices.map((item, i) => i === index ? { ...item, bdt: Number(event.target.value) } : item))} className="admin-input" placeholder="BDT" />
             <input value={price.usd} onChange={(event) => setPrices(prices.map((item, i) => i === index ? { ...item, usd: event.target.value } : item))} className="admin-input" placeholder="USD" />
-            <button onClick={() => setPrices(prices.filter((_, i) => i !== index))} className="rounded-md border border-red-300/30 px-4 text-red-100">Remove</button>
+            <button onClick={() => setPrices(prices.filter((_, i) => i !== index))} className="min-h-12 rounded-md border border-red-300/30 px-4 text-red-100">Remove</button>
           </div>
         ))}
       </div>
@@ -283,11 +336,27 @@ function PricingPanel({ products, reload }: { products: AdminProduct[]; reload: 
 
 function MediaPanel({ store, products, reload }: { store: AdminStore; products: AdminProduct[]; reload: () => Promise<void> }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [selectedLogoProductId, setSelectedLogoProductId] = useState("");
+  const logoProductId = selectedLogoProductId || products[0]?.id || "";
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await fetch("/api/admin/media", { method: "POST", body: form });
     formRef.current?.reset();
+    await reload();
+  }
+
+  async function setAsLogo(mediaId: string) {
+    if (!logoProductId) {
+      return;
+    }
+
+    await fetch("/api/admin/media", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mediaId, productId: logoProductId })
+    });
     await reload();
   }
 
@@ -304,12 +373,34 @@ function MediaPanel({ store, products, reload }: { store: AdminStore; products: 
           </label>
         </form>
       </AdminCard>
-      <div className="grid gap-4 md:grid-cols-3">
+      <AdminCard>
+        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+          <div>
+            <h3 className="text-2xl font-bold uppercase">Logo Assignment</h3>
+            <p className="mt-2 text-[#aeb8df]">Select a product, then use Set As Logo on any uploaded image below.</p>
+          </div>
+          <select value={logoProductId} onChange={(event) => setSelectedLogoProductId(event.target.value)} className="admin-input min-w-64">
+            {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+        </div>
+      </AdminCard>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {store.media.map((item) => (
           <AdminCard key={item.id}>
-            {item.type === "video" ? <video src={item.url} controls className="aspect-video w-full rounded-md bg-black" /> : <img src={item.url} alt={item.name} className="aspect-video w-full rounded-md object-cover" />}
-            <p className="mt-3 font-bold">{item.name}</p>
-            <DeleteButton url={`/api/admin/media?id=${item.id}`} reload={reload} />
+            <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-md border border-white/10 bg-[#090b24] p-2">
+              {item.type === "video" ? <video src={item.url} controls className="h-full w-full rounded-md bg-black object-contain" /> : <img src={item.url} alt={item.name} className="h-full w-full rounded-md object-contain" />}
+            </div>
+            <p className="mt-3 break-words font-bold">{item.name}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#aeb8df]">
+              {item.productId ? products.find((product) => product.id === item.productId)?.name ?? "Assigned product" : "General media"}
+              {item.isFeatured ? " | Featured" : ""}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {item.type === "image" ? (
+                <button type="button" onClick={() => setAsLogo(item.id)} className="rounded-md border border-white/15 px-3 py-2 text-sm font-bold uppercase transition hover:border-[#7cb0ff] hover:bg-[#4382DF]/15">Set As Logo</button>
+              ) : null}
+              <DeleteButton url={`/api/admin/media?id=${item.id}`} reload={reload} />
+            </div>
           </AdminCard>
         ))}
       </div>

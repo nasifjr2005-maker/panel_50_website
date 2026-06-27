@@ -6,6 +6,61 @@ import { Container, SectionHeader } from "@/components/ui";
 import { panelCategories, panelPricing } from "@/lib/data";
 import type { PanelPrice, SelectedPanelOrder } from "@/lib/data";
 
+type StoreProduct = {
+  id: string;
+  name: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  featuredImageId?: string | null;
+};
+
+type StoreCategory = {
+  id?: string;
+  category: string;
+  name?: string;
+  description: string;
+  panels?: string[];
+  products?: StoreProduct[];
+};
+
+type StoreMedia = {
+  id?: string;
+  url: string;
+  type: string;
+  name: string;
+  isFeatured: boolean;
+};
+
+const fallbackCategories: StoreCategory[] = panelCategories.map((category, categoryIndex) => ({
+  ...category,
+  id: `fallback-category-${categoryIndex}`,
+  name: category.category,
+  products: category.panels.map((panel) => ({
+    id: panel,
+    name: panel,
+    categoryId: `fallback-category-${categoryIndex}`,
+    categoryName: category.category
+  }))
+}));
+
+function getCategoryProducts(category: StoreCategory): StoreProduct[] {
+  if (category.products?.length) {
+    return category.products;
+  }
+
+  return (category.panels ?? []).map((panel) => ({
+    id: panel,
+    name: panel,
+    categoryId: category.id,
+    categoryName: category.category
+  }));
+}
+
+function findFeaturedImage(items: StoreMedia[]) {
+  return items.find((item) => item.type === "image" && item.isFeatured) ?? items.find((item) => item.type === "image");
+}
+
 export function Features({
   selectedOrder,
   onOrderSelect,
@@ -15,33 +70,33 @@ export function Features({
   onOrderSelect: (order: SelectedPanelOrder) => void;
   content?: Record<string, string>;
 }) {
-  const [activePanel, setActivePanel] = useState<string | null>(null);
+  const [activeProduct, setActiveProduct] = useState<StoreProduct | null>(null);
   const [selectedPrice, setSelectedPrice] = useState<PanelPrice | null>(null);
-  const [managedCategories, setManagedCategories] = useState(panelCategories);
+  const [managedCategories, setManagedCategories] = useState<StoreCategory[]>(fallbackCategories);
   const [managedPricing, setManagedPricing] = useState<Record<string, PanelPrice[]>>(panelPricing);
-  const [managedMedia, setManagedMedia] = useState<Record<string, Array<{ url: string; type: string; name: string; isFeatured: boolean }>>>({});
-  const activePrices = activePanel ? managedPricing[activePanel] ?? [] : [];
-  const activeMedia = activePanel ? managedMedia[activePanel] ?? [] : [];
-  const activeLogo = activeMedia.find((item) => item.type === "image" && item.isFeatured) ?? activeMedia.find((item) => item.type === "image");
+  const [managedMedia, setManagedMedia] = useState<Record<string, StoreMedia[]>>({});
+  const activePrices = activeProduct ? managedPricing[activeProduct.id] ?? managedPricing[activeProduct.name] ?? [] : [];
+  const activeMedia = activeProduct ? managedMedia[activeProduct.id] ?? managedMedia[activeProduct.name] ?? [] : [];
+  const activeLogo = findFeaturedImage(activeMedia);
   const highestPrice = activePrices.reduce((max, price) => Math.max(max, price.bdt), 0);
 
-  function openPricing(panel: string) {
-    const prices = managedPricing[panel] ?? [];
-    setActivePanel(panel);
+  function openPricing(product: StoreProduct) {
+    const prices = managedPricing[product.id] ?? managedPricing[product.name] ?? [];
+    setActiveProduct(product);
     setSelectedPrice(prices[0] ?? null);
   }
 
   function closePricing() {
-    setActivePanel(null);
+    setActiveProduct(null);
     setSelectedPrice(null);
   }
 
   function handleOrderNow() {
-    if (!activePanel || !selectedPrice) {
+    if (!activeProduct || !selectedPrice) {
       return;
     }
 
-    onOrderSelect({ panel: activePanel, ...selectedPrice });
+    onOrderSelect({ productId: activeProduct.id, panel: activeProduct.name, ...selectedPrice });
     closePricing();
   }
 
@@ -57,6 +112,25 @@ export function Features({
   }, []);
 
   useEffect(() => {
+    if (!activeProduct) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [activeProduct]);
+
+  useEffect(() => {
     async function loadManagedProducts() {
       try {
         const response = await fetch("/api/store/products", { cache: "no-store" });
@@ -64,11 +138,11 @@ export function Features({
           return;
         }
         const data = await response.json();
-        setManagedCategories(data.categories ?? panelCategories);
+        setManagedCategories(data.categories?.length ? data.categories : fallbackCategories);
         setManagedPricing(data.pricing ?? panelPricing);
         setManagedMedia(data.media ?? {});
       } catch {
-        setManagedCategories(panelCategories);
+        setManagedCategories(fallbackCategories);
         setManagedPricing(panelPricing);
       }
     }
@@ -100,32 +174,32 @@ export function Features({
                     <p className="mt-2 max-w-2xl text-base leading-7 text-[#c8d1f3]">{category.description}</p>
                   </div>
                   <span className="inline-flex w-fit items-center rounded-md border border-[#4382DF]/35 bg-[#4382DF]/12 px-3 py-2 text-sm font-bold uppercase text-[#bcd5ff]">
-                    {category.panels.length} options
+                    {getCategoryProducts(category).length} options
                   </span>
                 </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {category.panels.map((panel) => {
-                    const isSelected = selectedOrder?.panel === panel;
-                    const panelMedia = managedMedia[panel] ?? [];
-                    const panelLogo = panelMedia.find((item) => item.type === "image" && item.isFeatured) ?? panelMedia.find((item) => item.type === "image");
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {getCategoryProducts(category).map((product) => {
+                    const isSelected = selectedOrder?.productId === product.id || selectedOrder?.panel === product.name;
+                    const panelMedia = managedMedia[product.id] ?? managedMedia[product.name] ?? [];
+                    const panelLogo = findFeaturedImage(panelMedia);
 
                     return (
                       <button
-                        key={panel}
+                        key={product.id}
                         type="button"
-                        onClick={() => openPricing(panel)}
+                        onClick={() => openPricing(product)}
                         aria-pressed={isSelected}
-                        className={`premium-shine group relative min-h-32 rounded-lg border p-5 text-left transition duration-300 hover:-translate-y-1.5 hover:scale-[1.015] hover:border-[#7cb0ff] hover:bg-[#4382DF]/14 hover:shadow-[0_22px_70px_rgba(67,130,223,0.2)] focus:outline-none focus:ring-2 focus:ring-[#7cb0ff] focus:ring-offset-2 focus:ring-offset-[#07091f] ${
+                        className={`premium-shine group relative flex min-h-36 flex-col rounded-lg border p-4 text-left transition duration-300 hover:-translate-y-1.5 hover:scale-[1.015] hover:border-[#7cb0ff] hover:bg-[#4382DF]/14 hover:shadow-[0_22px_70px_rgba(67,130,223,0.2)] focus:outline-none focus:ring-2 focus:ring-[#7cb0ff] focus:ring-offset-2 focus:ring-offset-[#07091f] sm:p-5 ${
                           isSelected
                             ? "border-[#7cb0ff] bg-[#4382DF]/22 shadow-[0_0_35px_rgba(67,130,223,0.3)]"
                             : "border-white/12 bg-[#090b24]/72"
                         }`}
                       >
                         <span className="flex items-start justify-between gap-3">
-                          <span className={`flex size-11 shrink-0 items-center justify-center rounded-md transition ${isSelected ? "bg-[#4382DF] text-white" : "bg-[#4382DF]/18 text-[#7cb0ff] group-hover:bg-[#4382DF] group-hover:text-white"}`}>
+                          <span className={`flex size-14 shrink-0 items-center justify-center rounded-md border border-white/10 p-1.5 transition ${isSelected ? "bg-[#4382DF] text-white" : "bg-[#4382DF]/18 text-[#7cb0ff] group-hover:bg-[#4382DF] group-hover:text-white"}`}>
                             {panelLogo ? (
-                              <img src={panelLogo.url} alt="" className="h-full w-full rounded-md object-cover" />
+                              <img src={panelLogo.url} alt="" className="h-full w-full rounded-sm object-contain" />
                             ) : isSelected ? <Check size={22} aria-hidden="true" /> : <Gamepad2 size={22} aria-hidden="true" />}
                           </span>
                           {isSelected ? (
@@ -134,7 +208,10 @@ export function Features({
                             </span>
                           ) : null}
                         </span>
-                        <span className="mt-5 block text-xl font-bold uppercase leading-tight text-white">{panel}</span>
+                        <span className="mt-5 block break-words text-lg font-bold uppercase leading-tight text-white sm:text-xl">{product.name}</span>
+                        {product.description ? (
+                          <span className="mt-2 line-clamp-2 text-sm leading-5 text-[#aeb8df]">{product.description}</span>
+                        ) : null}
                         <span className="mt-2 block text-sm font-semibold uppercase tracking-[0.12em] text-[#9dbef5]">
                           Tap to order
                         </span>
@@ -149,9 +226,9 @@ export function Features({
       </Container>
 
       <AnimatePresence>
-        {activePanel ? (
+        {activeProduct ? (
           <motion.div
-            className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-[#020412]/82 px-3 py-4 backdrop-blur-md sm:items-center sm:px-4 sm:py-6"
+            className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-[#020412]/82 px-3 py-4 backdrop-blur-md sm:px-4 sm:py-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="panel-pricing-title"
@@ -166,19 +243,23 @@ export function Features({
             }}
           >
           <motion.div
-            className="glass relative max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg p-4 shadow-[0_0_90px_rgba(67,130,223,0.32)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+            className="glass relative flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg shadow-[0_0_90px_rgba(67,130,223,0.32)] sm:max-h-[calc(100dvh-3rem)]"
             initial={{ opacity: 0, y: 28, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.97 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-start justify-between gap-4 border-b border-white/10 bg-[#090b24]/95 p-4 backdrop-blur-xl sm:-mx-6 sm:-mt-6 sm:p-6">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 bg-[#090b24]/95 p-4 backdrop-blur-xl sm:p-6">
               <div className="flex min-w-0 items-center gap-3">
-                {activeLogo ? <img src={activeLogo.url} alt="" className="size-12 shrink-0 rounded-md border border-white/12 object-cover" /> : null}
+                {activeLogo ? (
+                  <span className="flex size-16 shrink-0 items-center justify-center rounded-md border border-white/12 bg-white/8 p-2">
+                    <img src={activeLogo.url} alt="" className="h-full w-full rounded-sm object-contain" />
+                  </span>
+                ) : null}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7cb0ff]">Pricing</p>
-                  <h3 id="panel-pricing-title" className="mt-1 text-2xl font-bold uppercase leading-tight text-white sm:text-3xl">
-                    {activePanel} Pricing
+                  <h3 id="panel-pricing-title" className="mt-1 break-words text-xl font-bold uppercase leading-tight text-white sm:text-3xl">
+                    {activeProduct.name} Pricing
                   </h3>
                 </div>
               </div>
@@ -192,6 +273,7 @@ export function Features({
               </button>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
             {activePrices.length > 0 ? (
               <>
                 {activeMedia.length ? (
@@ -201,7 +283,7 @@ export function Features({
                         {item.type === "video" ? (
                           <video src={item.url} controls className="aspect-video w-full bg-black" />
                         ) : (
-                          <img src={item.url} alt={item.name} className="aspect-video w-full object-cover" />
+                          <img src={item.url} alt={item.name} className="aspect-video w-full object-contain p-2" />
                         )}
                       </div>
                     ))}
@@ -272,6 +354,7 @@ export function Features({
                 </p>
               </div>
             )}
+            </div>
           </motion.div>
           </motion.div>
         ) : null}

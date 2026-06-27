@@ -104,6 +104,7 @@ export type PanelPrice = {
 };
 
 export type SelectedPanelOrder = {
+  productId?: string;
   panel: string;
   duration: string;
   bdt: number;

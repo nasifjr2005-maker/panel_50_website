@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { deleteMedia, saveMedia } from "@/lib/admin-store";
+import { deleteMedia, featureProductMedia, saveMedia } from "@/lib/admin-store";
 import type { AdminMedia } from "@/lib/admin-types";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]);
@@ -38,5 +38,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   await deleteMedia(searchParams.get("id") || "");
+  return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  await featureProductMedia(String(body.productId || ""), String(body.mediaId || ""));
   return NextResponse.json({ ok: true });
 }

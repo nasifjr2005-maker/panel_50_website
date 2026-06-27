@@ -37,36 +37,66 @@ export async function GET() {
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map(({ title, href, description, logoUrl, accent }) => ({ title, href, description, logoUrl, accent }));
 
-  const categories = store.categories
+  const sortedCategories = store.categories
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((category) => ({
+      id: category.id,
       category: category.name,
+      name: category.name,
       description: category.description,
-      panels: category.products
+      products: category.products
         .filter((product) => product.enabled)
         .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((product) => product.name)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          categoryId: product.categoryId,
+          categoryName: category.name,
+          featuredImageId: product.featuredImageId ?? null
+        }))
     }));
+
+  const categories = sortedCategories.map((category) => ({
+    id: category.id,
+    category: category.category,
+    name: category.name,
+    description: category.description,
+    panels: category.products.map((product) => product.name),
+    products: category.products
+  }));
 
   const pricing = Object.fromEntries(
     store.categories.flatMap((category) =>
       category.products
         .filter((product) => product.enabled)
-        .map((product) => [product.name, product.prices.sort((a, b) => a.sortOrder - b.sortOrder).map(({ duration, bdt, usd }) => ({ duration, bdt, usd }))])
+        .flatMap((product) => {
+          const prices = product.prices
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map(({ duration, bdt, usd }) => ({ duration, bdt, usd }));
+          return [
+            [product.id, prices],
+            [product.name, prices]
+          ];
+        })
     )
   );
 
   const media = Object.fromEntries(
     store.categories.flatMap((category) =>
-      category.products.map((product) => [
-        product.name,
-        product.media.map((item) => ({
+      category.products.flatMap((product) => {
+        const productMedia = product.media.map((item) => ({
+          id: item.id,
           url: item.url,
           type: item.type,
           name: item.name,
           isFeatured: item.isFeatured || item.id === product.featuredImageId
-        }))
-      ])
+        }));
+        return [
+          [product.id, productMedia],
+          [product.name, productMedia]
+        ];
+      })
     )
   );
 
